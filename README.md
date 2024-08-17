@@ -17,8 +17,8 @@ Combine Files is a Python script that aggregates text files from a specified dir
 1. Clone the repository or download the source code:
 
    ```
-   git clone https://github.com/yourusername/combine-files.git
-   cd combine-files
+   git clone https://github.com/ashakoen/python-util-combine-files-for-llm.git
+   cd python-util-combine-files-for-llm
    ```
 
 2. Ensure you have Python 3.6 or later installed on your system.
