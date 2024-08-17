@@ -97,7 +97,7 @@ def copy_to_clipboard(text: str):
             print_color("xclip not found. Unable to copy to clipboard.", 'yellow')
 
 
-def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]], output_file: str, verbose: bool, copy_clipboard: bool, custom_venv_names: Set[str]):
+def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]], output_file: str, verbose: bool, copy_clipboard: bool, custom_venv_names: Set[str], dry_run: bool):
     base_dir = Path.cwd()
 
     excluded_dirs = {
@@ -122,64 +122,73 @@ def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]
     total_files = sum(1 for _ in base_dir.rglob('*') if _.is_file())
     processed_files = 0
 
-    print_color("Combining files...", 'cyan')
+    print_color("Analyzing files..." if dry_run else "Combining files...", 'cyan')
     if verbose:
         print_color(f"Custom venv names to exclude: {custom_venv_names}", 'yellow')
 
     output_file_path = Path(output_file)
-    with output_file_path.open('w', encoding='utf-8') as outfile:
-        for filepath in base_dir.rglob('*'):
-            if filepath.is_file():
-                processed_files += 1
-                progress_bar(processed_files, total_files, prefix='Progress:', suffix='Complete', length=50)
-                
-                if should_exclude(filepath, excluded_extensions, excluded_dirs, filepath.parent, custom_venv_names):
-                    if verbose:
-                        print_color(f"Excluding file: {filepath}", 'yellow')
-                    continue
+    
+    for filepath in base_dir.rglob('*'):
+        if filepath.is_file():
+            processed_files += 1
+            progress_bar(processed_files, total_files, prefix='Progress:', suffix='Complete', length=50)
+            
+            if should_exclude(filepath, excluded_extensions, excluded_dirs, filepath.parent, custom_venv_names):
+                if verbose:
+                    print_color(f"Excluding file: {filepath}", 'yellow')
+                continue
 
-                if include_files and filepath.name not in include_files:
-                    if verbose:
-                        print_color(f"Excluding file not in include list: {filepath}", 'yellow')
-                    continue
+            if include_files and filepath.name not in include_files:
+                if verbose:
+                    print_color(f"Excluding file not in include list: {filepath}", 'yellow')
+                continue
 
-                if any(pattern in filepath.name for pattern in exclude_patterns):
-                    if verbose:
-                        print_color(f"Excluding file: {filepath}", 'yellow')
-                    continue
+            if any(pattern in filepath.name for pattern in exclude_patterns):
+                if verbose:
+                    print_color(f"Excluding file: {filepath}", 'yellow')
+                continue
 
-                if not is_text_file(filepath):
-                    if verbose:
-                        print_color(f"Skipping non-text file: {filepath}", 'yellow')
-                    continue
+            if not is_text_file(filepath):
+                if verbose:
+                    print_color(f"Skipping non-text file: {filepath}", 'yellow')
+                continue
 
+            included_files.append(str(filepath.relative_to(base_dir)))
+            if verbose:
+                print_color(f"{'Would include' if dry_run else 'Including'} file: {filepath}", 'green')
+
+            if not dry_run:
                 try:
                     with filepath.open('r', encoding='utf-8') as infile:
                         file_content = f"##{filepath.relative_to(base_dir)}\n\n{infile.read()}\n\n"
-                        outfile.write(file_content)
                         output_content += file_content
-                        included_files.append(str(filepath.relative_to(base_dir)))
-                        if verbose:
-                            print_color(f"Including file: {filepath}", 'green')
                 except UnicodeDecodeError:
                     print_color(f"Skipping file due to encoding issues: {filepath}", 'red')
 
-        # Add the list of included files at the end of the document
-        file_list = "\n## Files Included Above\n\n"
+    # Add the list of included files at the end
+    file_list = "\n## Files Included Above\n\n"
+    for file in included_files:
+        file_list += f"- {file}\n"
+    output_content += file_list
+
+    if dry_run:
+        print_color("\nDry run completed. No files were combined.", 'green')
+        print_color(f"Total files that would be included: {len(included_files)}", 'green')
+        print_color("Files that would be included:", 'cyan')
         for file in included_files:
-            file_list += f"- {file}\n"
-        outfile.write(file_list)
-        output_content += file_list
+            print_color(f"- {file}", 'default')
+    else:
+        with output_file_path.open('w', encoding='utf-8') as outfile:
+            outfile.write(output_content)
+        print_color(f"\nOutput written to {output_file}", 'green')
+        print_color(f"Total files included: {len(included_files)}", 'green')
 
-    print_color(f"\nOutput written to {output_file}", 'green')
-    print_color(f"Total files included: {len(included_files)}", 'green')
-
-    if copy_clipboard:
-        if check_and_confirm_clipboard(output_file_path):
-            copy_to_clipboard(output_content)
-            print_color("Output copied to clipboard", 'green')
-        else:
-            print_color("Clipboard copy cancelled by user", 'yellow')
+        if copy_clipboard:
+            if check_and_confirm_clipboard(output_file_path):
+                copy_to_clipboard(output_content)
+                print_color("Output copied to clipboard", 'green')
+            else:
+                print_color("Clipboard copy cancelled by user", 'yellow')
 
 
 def main():
@@ -190,6 +199,7 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output.')
     parser.add_argument('--clipboard', action='store_true', help='Copy output to clipboard.')
     parser.add_argument('--custom-venv', default="", help='Comma-separated custom virtual environment folder names to exclude.')
+    parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without creating the output file.')
 
     args = parser.parse_args()
 
@@ -197,7 +207,7 @@ def main():
     include_files = args.include.split() if args.include else None
     custom_venv_names = set(name.strip().lower() for name in args.custom_venv.split(',') if name.strip())
     
-    combine_files(exclude_patterns, include_files, args.output, args.verbose, args.clipboard, custom_venv_names)
+    combine_files(exclude_patterns, include_files, args.output, args.verbose, args.clipboard, custom_venv_names, args.dry_run)
 
 if __name__ == '__main__':
     main()
