@@ -65,7 +65,7 @@ def should_exclude(file: Path, excluded_extensions: Set[str], excluded_dirs: Set
         return True
     if any(part in excluded_dirs for part in file.parts):
         return True
-    if any(is_venv_directory(file.parent, custom_venv_names) for _ in file.parts):
+    if any(is_venv_directory(Path(part), custom_venv_names) for part in file.parts):
         return True
     return False
 
@@ -91,7 +91,7 @@ def copy_to_clipboard(text: str):
         except FileNotFoundError:
             print_color("xclip not found. Unable to copy to clipboard.", 'yellow')
 
-def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]], output_file: str, verbose: bool, copy_clipboard: bool, custom_venv_names: Set[str], dry_run: bool):
+def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]], output_file: str, verbose: bool, copy_clipboard: bool, custom_venv_names: Set[str], dry_run: bool, numlines: Optional[int] = None):
     base_dir = Path.cwd()
 
     excluded_dirs = {
@@ -164,7 +164,13 @@ def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]
             if not dry_run:
                 try:
                     with filepath.open('r', encoding='utf-8') as infile:
-                        file_content = f"##{filepath.relative_to(base_dir)}\n\n{infile.read()}\n\n"
+                        file_content = f"##{filepath.relative_to(base_dir)}\n\n"
+                        if numlines is not None:
+                            lines = infile.readlines()[:numlines]
+                            file_content += ''.join(lines)
+                        else:
+                            file_content += infile.read()
+                        file_content += "\n\n"
                         output_content += file_content
                 except UnicodeDecodeError:
                     print_color(f"Skipping file due to encoding issues: {filepath}", 'red')
@@ -204,6 +210,7 @@ def main():
     parser.add_argument('--clipboard', action='store_true', help='Copy output to clipboard.')
     parser.add_argument('--custom-venv', default="", help='Comma-separated custom virtual environment folder names to exclude.')
     parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without creating the output file.')
+    parser.add_argument('--numlines', type=int, help='Limit the output of each file to the specified number of lines.')
 
     args = parser.parse_args()
 
@@ -211,7 +218,7 @@ def main():
     include_files = args.include if args.include else None
     custom_venv_names = set(name.strip().lower() for name in args.custom_venv.split(',') if name.strip())
     
-    combine_files(exclude_patterns, include_files, args.output, args.verbose, args.clipboard, custom_venv_names, args.dry_run)
+    combine_files(exclude_patterns, include_files, args.output, args.verbose, args.clipboard, custom_venv_names, args.dry_run, args.numlines)
 
 if __name__ == '__main__':
     main()

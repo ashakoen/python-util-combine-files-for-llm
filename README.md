@@ -39,6 +39,7 @@ Options:
 - `--verbose`: Enable verbose output.
 - `--clipboard`: Copy output to clipboard (with size warning).
 - `--custom-venv`: Comma-separated custom virtual environment folder names to exclude.
+- `--numlines`: Limit the number of lines returned from each file (for big files where you just need a sample).
 
 Example:
 
