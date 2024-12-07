@@ -5,6 +5,7 @@ from typing import List, Optional, Set
 import subprocess
 import mimetypes
 
+
 def print_color(text: str, color: str = 'default'):
     colors = {
         'red': '\033[91m',
@@ -17,23 +18,25 @@ def print_color(text: str, color: str = 'default'):
     }
     print(f"{colors.get(color, colors['default'])}{text}{colors['default']}")
 
+
 def progress_bar(iteration: int, total: int, prefix: str = '', suffix: str = '', decimals: int = 1, length: int = 50, fill: str = '█', print_end: str = "\r"):
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filled_length = int(length * iteration // total)
     bar = fill * filled_length + '-' * (length - filled_length)
     print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
-    if iteration == total: 
+    if iteration == total:
         print()
+
 
 def is_text_file(filepath: Path) -> bool:
     mime_type, _ = mimetypes.guess_type(str(filepath))
     if mime_type and mime_type.startswith('text'):
         return True
-    
+
     text_extensions = {'.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml', '.csv', '.log', '.ini', '.cfg', '.yml', '.yaml', '.swift'}
     if filepath.suffix.lower() in text_extensions:
         return True
-    
+
     try:
         with filepath.open('r', encoding='utf-8') as f:
             f.read(1024)
@@ -41,13 +44,14 @@ def is_text_file(filepath: Path) -> bool:
     except UnicodeDecodeError:
         return False
 
+
 def is_venv_directory(path: Path, custom_venv_names: Set[str]) -> bool:
     common_venv_names = {'venv', 'env', '.env', 'virtualenv', '.venv', 'myenv'}
     common_venv_names.update(custom_venv_names)
-    
+
     if path.name.lower() in common_venv_names:
         return True
-    
+
     venv_indicators = [
         'bin/activate',
         'Scripts/activate.bat',
@@ -58,7 +62,15 @@ def is_venv_directory(path: Path, custom_venv_names: Set[str]) -> bool:
     ]
     return any((path / indicator).exists() for indicator in venv_indicators)
 
-def should_exclude(file: Path, excluded_extensions: Set[str], excluded_dirs: Set[str], custom_venv_names: Set[str]) -> bool:
+
+def should_exclude(
+    file: Path,
+    excluded_extensions: Set[str],
+    excluded_dirs: Set[str],
+    custom_venv_names: Set[str],
+    excluded_paths: List[str],
+    base_dir: Path
+) -> bool:
     if file.name.startswith('.') or file.name == '.DS_Store':
         return True
     if file.suffix.lower() in excluded_extensions:
@@ -67,7 +79,18 @@ def should_exclude(file: Path, excluded_extensions: Set[str], excluded_dirs: Set
         return True
     if any(is_venv_directory(Path(part), custom_venv_names) for part in file.parts):
         return True
+    # Check for excluded paths
+    try:
+        relative_path = file.relative_to(base_dir)
+    except ValueError:
+        # File is not relative to base_dir
+        return False
+    for path in excluded_paths:
+        excluded_path = Path(path)
+        if relative_path.is_relative_to(excluded_path):
+            return True
     return False
+
 
 def check_and_confirm_clipboard(file_path: Path, threshold_kb: float = 500) -> bool:
     file_size_kb = file_path.stat().st_size / 1024
@@ -77,6 +100,7 @@ def check_and_confirm_clipboard(file_path: Path, threshold_kb: float = 500) -> b
         user_input = input("Do you still want to copy the content to clipboard? (y/n): ").lower()
         return user_input == 'y'
     return True
+
 
 def copy_to_clipboard(text: str):
     if sys.platform == 'darwin':  # macOS
@@ -91,12 +115,24 @@ def copy_to_clipboard(text: str):
         except FileNotFoundError:
             print_color("xclip not found. Unable to copy to clipboard.", 'yellow')
 
-def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]], output_file: str, verbose: bool, copy_clipboard: bool, custom_venv_names: Set[str], dry_run: bool, numlines: Optional[int] = None):
+
+def combine_files(
+    exclude_patterns: List[str],
+    include_files: Optional[List[str]],
+    output_file: str,
+    verbose: bool,
+    copy_clipboard: bool,
+    custom_venv_names: Set[str],
+    dry_run: bool,
+    numlines: Optional[int],
+    excluded_paths: List[str]
+):
     base_dir = Path.cwd()
 
     excluded_dirs = {
         'node_modules', '.git', 'build', 'dist', '__pycache__',
-        '.idea', '.vscode', 'assets', 'images', 'logs', 'temp', '.tmp'
+        '.idea', '.vscode', 'assets', 'images', 'logs', 'temp', '.tmp',
+        '.next'  # Exclude .next folders by default
     }
 
     excluded_extensions = {
@@ -118,6 +154,7 @@ def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]
     if verbose:
         print_color(f"Custom venv names to exclude: {custom_venv_names}", 'yellow')
         print_color(f"Files to include: {include_files}", 'cyan')
+        print_color(f"Excluded paths: {excluded_paths}", 'yellow')
 
     files_to_process = []
     if include_files:
@@ -141,8 +178,8 @@ def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]
         if filepath.is_file():
             processed_files += 1
             progress_bar(processed_files, total_files, prefix='Progress:', suffix='Complete', length=50)
-            
-            if should_exclude(filepath, excluded_extensions, excluded_dirs, custom_venv_names):
+
+            if should_exclude(filepath, excluded_extensions, excluded_dirs, custom_venv_names, excluded_paths, base_dir):
                 if verbose:
                     print_color(f"Excluding file: {filepath}", 'yellow')
                 continue
@@ -164,7 +201,7 @@ def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]
             if not dry_run:
                 try:
                     with filepath.open('r', encoding='utf-8') as infile:
-                        file_content = f"##{filepath.relative_to(base_dir)}\n\n"
+                        file_content = f"## {filepath.relative_to(base_dir)}\n\n"
                         if numlines is not None:
                             lines = infile.readlines()[:numlines]
                             file_content += ''.join(lines)
@@ -201,6 +238,7 @@ def combine_files(exclude_patterns: List[str], include_files: Optional[List[str]
             else:
                 print_color("Clipboard copy cancelled by user", 'yellow')
 
+
 def main():
     parser = argparse.ArgumentParser(description="Combine multiple text files into a single document.")
     parser.add_argument('--exclude', default="", help='Comma-separated patterns to exclude from the search.')
@@ -211,14 +249,27 @@ def main():
     parser.add_argument('--custom-venv', default="", help='Comma-separated custom virtual environment folder names to exclude.')
     parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without creating the output file.')
     parser.add_argument('--numlines', type=int, help='Limit the output of each file to the specified number of lines.')
+    parser.add_argument('--exclude-paths', nargs='*', default=[], help='List of directory paths to exclude from the search.')
 
     args = parser.parse_args()
 
     exclude_patterns = args.exclude.split(',') if args.exclude else []
     include_files = args.include if args.include else None
     custom_venv_names = set(name.strip().lower() for name in args.custom_venv.split(',') if name.strip())
-    
-    combine_files(exclude_patterns, include_files, args.output, args.verbose, args.clipboard, custom_venv_names, args.dry_run, args.numlines)
+    excluded_paths = args.exclude_paths
+
+    combine_files(
+        exclude_patterns,
+        include_files,
+        args.output,
+        args.verbose,
+        args.clipboard,
+        custom_venv_names,
+        args.dry_run,
+        args.numlines,
+        excluded_paths
+    )
+
 
 if __name__ == '__main__':
     main()
