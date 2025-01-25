@@ -33,7 +33,10 @@ def is_text_file(filepath: Path) -> bool:
     if mime_type and mime_type.startswith('text'):
         return True
 
-    text_extensions = {'.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml', '.csv', '.log', '.ini', '.cfg', '.yml', '.yaml', '.swift'}
+    text_extensions = {
+        '.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml',
+        '.csv', '.log', '.ini', '.cfg', '.yml', '.yaml', '.swift'
+    }
     if filepath.suffix.lower() in text_extensions:
         return True
 
@@ -132,7 +135,7 @@ def combine_files(
     excluded_dirs = {
         'node_modules', '.git', 'build', 'dist', '__pycache__',
         '.idea', '.vscode', 'assets', 'images', 'logs', 'temp', '.tmp',
-        '.next'  # Exclude .next folders by default
+        '.next', 'pytest_cache', '.pytest_cache'  # Added .pytest_cache here
     }
 
     excluded_extensions = {
